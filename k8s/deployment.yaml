@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  labels:
+    app: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        # App Next.js (HTTP interno en 3000; no expuesta directamente).
+        - name: frontend
+          image: FRONTEND_IMAGE
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          env:
+            - name: BACKEND_BASE_URL
+              value: http://backend:8000
+          readinessProbe:
+            httpGet:
+              path: /api/balance
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+        # Borde TLS: redirige 80 -> 443 y proxya a la app en 127.0.0.1:3000.
+        - name: tls-proxy
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+            - containerPort: 443
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d
+            - name: tls
+              mountPath: /etc/nginx/tls
+              readOnly: true
+          readinessProbe:
+            tcpSocket:
+              port: 443
+            initialDelaySeconds: 3
+            periodSeconds: 5
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: frontend-nginx
+        - name: tls
+          secret:
+            secretName: frontend-tls

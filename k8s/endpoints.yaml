@@ -1,0 +1,28 @@
+# Puente cross-cluster: el frontend alcanza el backend por su NodePort.
+#
+# El Service no tiene selector; un Endpoints manual apunta a la IP Docker del
+# contenedor k3s del backend (descubierta por scripts/deploy.sh) y a su NodePort
+# 30080. Ver research.md, Decisión 8 (validado por spike).
+#
+# Nota: `v1 Endpoints` está deprecado desde k8s 1.33 (aparece warning); funciona.
+# Si se quiere evitar el warning, migrar a `EndpointSlice`.
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+spec:
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 30080
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: backend
+subsets:
+  - addresses:
+      - ip: BACKEND_DOCKER_IP
+    ports:
+      - name: http
+        port: 30080
