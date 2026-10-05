@@ -1,0 +1,65 @@
+# Repo frontend: build + push + deploy solo del frontend (FR-018, FR-019, SC-007).
+# Incluye el check de vendorizado (T028): vendor/openapi.yaml MUST ser
+# byte-idéntico al tag fijado en contracts.version. Puerta SC-007 con reversión.
+name: frontend-deploy
+
+on:
+  push:
+    branches: [main]
+
+env:
+  ECR_REGISTRY: ${{ vars.ECR_REGISTRY }}
+  SERVICE: frontend
+  BACKEND_REPO: ${{ vars.BACKEND_REPO }}
+
+jobs:
+  vendored-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.BACKEND_REPO }}
+          path: backend-src
+          fetch-tags: true
+      - name: vendor/openapi.yaml byte-idéntico al tag fijado
+        run: |
+          TAG=$(cat contracts.version)
+          git -C backend-src fetch --tags origin "$TAG"
+          git -C backend-src show "$TAG:contracts/openapi.yaml" > /tmp/pinned-openapi.yaml
+          diff -u /tmp/pinned-openapi.yaml vendor/openapi.yaml \
+            || { echo 'RE-VENDORIZAR: vendor/openapi.yaml != '"$TAG"; exit 1; }
+
+  deploy:
+    needs: vendored-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+      - uses: aws-actions/amazon-ecr-login@v2
+      - uses: docker/setup-buildx-action@v3
+      - name: Build + push (:sha y :semver)
+        run: |
+          SHA_TAG="${ECR_REGISTRY}/${SERVICE}:${GITHUB_SHA}"
+          SEMVER="${GITHUB_REF_NAME#v}"
+          docker buildx build --push \
+            -t "$SHA_TAG" -t "${ECR_REGISTRY}/${SERVICE}:${SEMVER}" .
+          echo "IMAGE=$SHA_TAG" >> "$GITHUB_ENV"
+      - name: kubectl apply con el tag explícito
+        run: |
+          sed -i "s|image: FRONTEND_IMAGE|image: ${IMAGE}|" k8s/deployment.yaml
+          kubectl apply -f k8s/ && kubectl rollout status deployment/frontend
+        env:
+          KUBECONFIG: ${{ secrets.FRONTEND_KUBECONFIG }}
+      - name: Smoke del frontend
+        run: curl -sf "http://${{ vars.FRONTEND_URL }}/api/balance"
+      - name: Health check cruzado del backend (puerta SC-007)
+        run: curl -sf "http://${{ vars.BACKEND_URL }}/balance"
+      - name: Revertir si el backend no responde
+        if: failure()
+        run: kubectl rollout undo deployment/frontend
+        env:
+          KUBECONFIG: ${{ secrets.FRONTEND_KUBECONFIG }}
