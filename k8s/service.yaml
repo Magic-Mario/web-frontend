@@ -12,3 +12,9 @@ spec:
     - name: https
       port: 443
       targetPort: 443
+    # El proxy TLS redirige HTTP -> HTTPS en el puerto 30443 (misma clave que
+    # el NodePort externo); sin este puerto el redirect no es alcanzable
+    # in-cluster y los clientes -L quedan con respuesta vacía.
+    - name: https-alt
+      port: 30443
+      targetPort: 443

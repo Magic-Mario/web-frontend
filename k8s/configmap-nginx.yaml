@@ -10,8 +10,10 @@ data:
       listen 80;
       server_name _;
 
-      # Redirección permanente: toda petición HTTP va a HTTPS.
-      return 301 https://$host:30443$request_uri;
+      # Redirección permanente HTTP -> HTTPS. 308 en vez de 301: preserva el
+      # método y el cuerpo, así los POST (API) sobreviven al redirect (con 301
+      # se reenviaba sin cuerpo y la app respondía 500).
+      return 308 https://$host:30443$request_uri;
     }
 
     server {
