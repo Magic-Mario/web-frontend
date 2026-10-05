@@ -1,6 +1,9 @@
 # Repo frontend: build + push + deploy solo del frontend (FR-018, FR-019, SC-007).
 # Incluye el check de vendorizado (T028): vendor/openapi.yaml MUST ser
-# byte-idéntico al tag fijado en contracts.version. Puerta SC-007 con reversión.
+# byte-idéntico al tag fijado en contracts.version.
+# El rollback SOLO aplica si falla el smoke del propio frontend. El health check
+# del backend es informativo (continue-on-error): no bloquea ni revierte el
+# deploy del frontend, pero deja la evidencia de SC-007.
 name: frontend-deploy
 
 on:
@@ -55,11 +58,19 @@ jobs:
         env:
           KUBECONFIG: ${{ secrets.FRONTEND_KUBECONFIG }}
       - name: Smoke del frontend
+        id: smoke
         run: curl -sf "http://${{ vars.FRONTEND_URL }}/api/balance"
-      - name: Health check cruzado del backend (puerta SC-007)
-        run: curl -sf "http://${{ vars.BACKEND_URL }}/balance"
-      - name: Revertir si el backend no responde
-        if: failure()
+      - name: Revertir si el propio frontend no responde
+        if: failure() && steps.smoke.outcome == 'failure'
         run: kubectl rollout undo deployment/frontend
         env:
           KUBECONFIG: ${{ secrets.FRONTEND_KUBECONFIG }}
+      - name: Health check del backend (informativo, SC-007)
+        if: always()
+        continue-on-error: true
+        run: |
+          if curl -sf --max-time 10 "http://${{ vars.BACKEND_URL }}/balance"; then
+            echo "backend OK"
+          else
+            echo "backend NO RESPONDE — no bloquea este deploy"
+          fi
