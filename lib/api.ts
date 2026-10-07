@@ -56,6 +56,12 @@ export interface Life {
   status: LifeStatus;
   cause_of_death?: CauseOfDeath | null;
   people: PersonaCercana[];
+  /**
+   * Suceso del período en curso que todavía no se decidió (SC-006).
+   * Sólo lo devuelve `GET /lives`: tras recargar se pinta en vez de perderlo,
+   * porque mientras haya algo pendiente el avance responde `409`.
+   */
+  pending_event?: PresentedEvent | null;
 }
 
 export interface CreateLifeInput {
