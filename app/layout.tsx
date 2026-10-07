@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Finance · demo cloud (Floci + EKS)",
-  description: "Servicio de finanzas mínimo sobre infraestructura dual-EKS local",
+  title: "Simulador de vida",
+  description:
+    "Juego de simulación de vida: nace, crece y decide sobre eventos de la época real",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
