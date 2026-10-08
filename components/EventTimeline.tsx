@@ -9,6 +9,7 @@
 // con error, no se rompe nada — el panel queda en su estado vacío y el
 // juego sigue funcionando con el resto de operaciones.
 
+import { useEffect, useRef } from "react";
 import type { EventHistory, EventHistoryItem, EventType, Stats } from "@/lib/api";
 import {
   CheckIcon,
@@ -51,6 +52,14 @@ export function EventTimeline({
   // Orden cronológico garantizado: el backend ya envía `seq` ascendente,
   // pero se reordena aquí por si acaso (no se confía en el orden externo).
   const events = [...(history?.events ?? [])].sort((a, b) => a.seq - b.seq);
+
+  // El listado es la zona de scroll: cuando entra un suceso nuevo se salta
+  // siempre al más reciente (el último, abajo) en vez de quedarse arriba.
+  const listRef = useRef<HTMLOListElement>(null);
+  useEffect(() => {
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [events.length]);
 
   return (
     <section
@@ -106,6 +115,7 @@ export function EventTimeline({
 
       {state === "ready" && events.length > 0 ? (
         <ol
+          ref={listRef}
           className="timeline__list"
           aria-labelledby="timeline-heading"
           tabIndex={0}
