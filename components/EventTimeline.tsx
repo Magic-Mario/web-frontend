@@ -105,7 +105,11 @@ export function EventTimeline({
       ) : null}
 
       {state === "ready" && events.length > 0 ? (
-        <ol className="timeline__list">
+        <ol
+          className="timeline__list"
+          aria-labelledby="timeline-heading"
+          tabIndex={0}
+        >
           {events.map((item) => (
             <li
               key={item.seq}

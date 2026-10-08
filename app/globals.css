@@ -315,6 +315,12 @@ ol {
     position: sticky;
     top: var(--space-4);
   }
+
+  /* Con el panel fijo a la derecha, se aprovecha toda la altura de la
+     ventana y el historial rueda dentro de él. */
+  .timeline {
+    max-height: calc(100dvh - var(--space-6));
+  }
 }
 
 /* ==========================================================================
@@ -1024,6 +1030,16 @@ ol {
 
 .timeline {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  /* Acotado para no eternizarse con el tiempo: el panel tiene tope de altura
+     y el listado rueda dentro de él. */
+  max-height: 70vh;
+}
+
+/* La cabecera ("Historial · N sucesos") queda fija mientras se desplaza. */
+.timeline > .panel__head {
+  flex-shrink: 0;
 }
 
 .timeline__list {
@@ -1032,26 +1048,38 @@ ol {
   flex-direction: column;
   gap: var(--space-4);
   padding-left: var(--space-5);
-}
-
-/* Línea conectora vertical detrás de los puntos. */
-.timeline__list::before {
-  content: "";
-  position: absolute;
-  top: var(--space-2);
-  bottom: var(--space-2);
-  left: 7px;
-  width: 2px;
-  background: linear-gradient(
-    to bottom,
-    var(--primary),
-    var(--border-strong) 60%,
-    transparent
-  );
+  padding-right: var(--space-1);
+  /* Zona de scroll interno: crece con el contenido hasta el tope del panel
+     y, a partir de ahí, se desplaza en vertical dentro de él. `min-height:0`
+     es lo que permite que el flex la encoja y la haga scrolleable. */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .timeline__item {
   position: relative;
+}
+
+/* Línea conectora: cada suceso arrastra su propio tramo (de su parte superior
+   hasta justo el siguiente), de modo que la línea queda continua aunque el
+   listado sea desplazable. El punto la tapa en la unión. */
+.timeline__item::before {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--space-5) + 7px);
+  top: 0;
+  bottom: calc(-1 * var(--space-4));
+  width: 2px;
+  background: var(--border-strong);
+}
+
+/* El último tramo termina en su punto, sin colgar. */
+.timeline__item:last-child::before {
+  bottom: auto;
+  height: calc(var(--space-3) + 14px);
 }
 
 .timeline__dot {
