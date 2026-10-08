@@ -26,7 +26,7 @@ spec:
               value: http://backend:8000
           readinessProbe:
             httpGet:
-              path: /api/balance
+              path: /
               port: 3000
             initialDelaySeconds: 5
             periodSeconds: 5
