@@ -10,10 +10,14 @@
 // - Al recargar se retoma la partida tal cual quedó, incluido un suceso
 //   pendiente de decisión que el backend devuelve en `GET /lives`
 //   (FR-008, SC-006).
+// - Al morir, `GET /lives/summary` levanta la compuerta (409 en vida) y se
+//   pinta `DeathSummary`; «Empezar de nuevo» borra todo con `DELETE /lives`
+//   y vuelve al formulario sin rastro de la partida anterior (SC-004).
 
 import { useCallback, useEffect, useState } from "react";
 
 import { BirthForm } from "@/components/BirthForm";
+import { DeathSummary } from "@/components/DeathSummary";
 import { EventCard } from "@/components/EventCard";
 import { LifeView } from "@/components/LifeView";
 import { PeopleList } from "@/components/PeopleList";
@@ -21,11 +25,20 @@ import {
   ApiError,
   advanceLife,
   createLife,
+  deleteLife,
   getBirthCatalog,
   getLife,
+  getSummary,
   submitDecision,
 } from "@/lib/api";
-import type { BirthCountry, CreateLifeInput, Life, PresentedEvent, Stats } from "@/lib/api";
+import type {
+  BirthCountry,
+  CreateLifeInput,
+  Life,
+  LifeSummary,
+  PresentedEvent,
+  Stats,
+} from "@/lib/api";
 
 type Phase = "loading" | "birth" | "life";
 
@@ -34,6 +47,7 @@ export default function Home() {
   const [life, setLife] = useState<Life | null>(null);
   const [event, setEvent] = useState<PresentedEvent | null>(null);
   const [derived, setDerived] = useState<Partial<Stats> | null>(null);
+  const [summary, setSummary] = useState<LifeSummary | null>(null);
   const [countries, setCountries] = useState<BirthCountry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -43,6 +57,7 @@ export default function Home() {
     setLife(next);
     setEvent(next.pending_event ?? null);
     setDerived(null);
+    setSummary(null);
     setPhase("life");
   }, []);
 
@@ -75,6 +90,31 @@ export default function Home() {
       cancelled = true;
     };
   }, [adoptLife]);
+
+  // El resumen sólo existe con la vida terminada: `GET /lives/summary`
+  // responde `409` mientras corre (FR-005), así que se pide aquí, tanto al
+  // morir como al recargar una partida que ya había muerto.
+  useEffect(() => {
+    if (!life || life.status !== "DEAD" || summary) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const data = await getSummary();
+        if (!cancelled) setSummary(data);
+      } catch (err) {
+        if (!cancelled) {
+          setError(
+            err instanceof ApiError ? err.detail : "No se pudo cargar el resumen.",
+          );
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [life, summary]);
 
   const handleCreate = useCallback(
     async (input: CreateLifeInput) => {
@@ -132,6 +172,24 @@ export default function Home() {
     }
   }, []);
 
+  const handleRestart = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteLife();
+      // SC-004: sin rastro de la partida anterior; se vuelve al formulario.
+      setLife(null);
+      setSummary(null);
+      setEvent(null);
+      setDerived(null);
+      setPhase("birth");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.detail : "No se pudo borrar la vida.");
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
   if (phase === "loading") {
     return (
       <main style={main}>
@@ -165,6 +223,13 @@ export default function Home() {
         {event ? <EventCard event={event} onSelect={handleDecide} busy={busy} /> : null}
       </LifeView>
       <PeopleList people={life.people} />
+      {life.status === "DEAD" ? (
+        summary ? (
+          <DeathSummary summary={summary} onRestart={handleRestart} busy={busy} />
+        ) : (
+          <p>Cargando el resumen…</p>
+        )
+      ) : null}
       {error ? (
         <p role="alert" style={{ color: "#b91c1c" }}>
           {error}
