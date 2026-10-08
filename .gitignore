@@ -5,6 +5,7 @@ out/
 dist/
 build/
 *.log
+*.tsbuildinfo
 
 # Entorno y editores
 .env
