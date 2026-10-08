@@ -6,9 +6,10 @@
 // - Sin vida → formulario de nacimiento (con el catálogo de FR-001).
 // - Con vida → `LifeView` con cabecera (nombre, lugar, edad y estado),
 //   stats, el `EventCard` o el botón «Avanzar», personas cercanas y, al
-//   lado, la línea de tiempo del historial (`GET /lives/events`). Son **las
-//   dos únicas interacciones** de la partida: avanzar y elegir opción, sin
-//   menú de acciones (FR-012).
+//   lado, la línea de tiempo del historial (`GET /lives/events`). Las dos
+//   interacciones de **juego** siguen siendo avanzar y elegir opción, sin
+//   menú de acciones (FR-012); «Nueva partida» es sólo un control de sesión
+//   (con confirmación) que borra la partida y vuelve al nacimiento.
 // - Al recargar se retoma la partida tal cual quedó, incluido un suceso
 //   pendiente de decisión que el backend devuelve en `GET /lives`
 //   (FR-008, SC-006).
@@ -368,6 +369,7 @@ export default function Home() {
             people={life.people}
             onAdvance={handleAdvance}
             onDecide={handleDecide}
+            onRestart={handleRestart}
           />
         </div>
         <aside className="game-layout__side">

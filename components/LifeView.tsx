@@ -1,10 +1,15 @@
 // HUD de la vida en curso (T058 · FR-002, FR-004, FR-011, FR-012).
 //
-// FR-012: **no existe menú de acciones**. Toda la partida se juega con dos
-// interacciones: pulsar «Avanzar» y elegir una opción del evento. Aquí vive
-// la primera, junto a la cabecera (nombre y lugar, edad actual y estado),
-// la granularidad vigente (que no cambia desde el nacimiento, FR-002), las
-// cuatro stats (FR-004) y las personas cercanas.
+// FR-012: **no existe menú de acciones de juego**. Toda la partida se juega
+// con dos interacciones: pulsar «Avanzar» y elegir una opción del evento.
+// Aquí vive la primera, junto a la cabecera (nombre y lugar, edad actual y
+// estado), la granularidad vigente (que no cambia desde el nacimiento,
+// FR-002), las cuatro stats (FR-004) y las personas cercanas.
+//
+// «Nueva partida» no es una acción de juego sino un **control de sesión** (y
+// pide confirmación): borra la partida con `DELETE /lives` y devuelve al
+// jugador al formulario con una identidad nueva, para poder probar varias
+// vidas seguidas.
 //
 // El suceso pendiente se dibuja con `EventCard` cuando existe; si no lo hay
 // se ofrece el botón «Avanzar». `pending_event` de `GET /lives` garantiza
@@ -21,6 +26,7 @@ import {
   ClockIcon,
   HeartPulseIcon,
   MapPinIcon,
+  RotateCcwIcon,
   SkullIcon,
   UserIcon,
 } from "@/components/icons";
@@ -57,6 +63,7 @@ export function LifeView({
   flash = null,
   onAdvance,
   onDecide,
+  onRestart,
   busy = false,
   people,
 }: {
@@ -73,12 +80,24 @@ export function LifeView({
   flash?: StatFlash | null;
   onAdvance: () => void;
   onDecide: (optionId: string) => void;
+  /** Borra la partida (DELETE /lives) y vuelve al formulario de nacimiento. */
+  onRestart: () => void;
   /** Hay una petición en vuelo: evita el doble clic. */
   busy?: boolean;
   people: PersonaCercana[];
 }) {
   const alive = life.status === "ALIVE";
   const place = countryName ? `${life.city} (${countryName})` : `${life.city} (${life.country})`;
+
+  // Acción destructiva (borra la partida en el servidor): se confirma antes
+  // de mandar al jugador al formulario con una identidad nueva.
+  const handleNewGame = () => {
+    if (busy) return;
+    const ok = window.confirm(
+      "¿Borrar esta partida y volver al inicio? Se eliminará todo el progreso y podrás crear un personaje nuevo.",
+    );
+    if (ok) onRestart();
+  };
 
   return (
     <div className="stack" aria-live="polite" data-testid="life">
@@ -109,14 +128,27 @@ export function LifeView({
             </p>
           </div>
 
-          <span className="hud__status" data-status={life.status}>
-            {alive ? (
-              <HeartPulseIcon width={18} height={18} />
-            ) : (
-              <SkullIcon width={18} height={18} />
-            )}
-            {alive ? "Vivo/a" : "Finado/a"}
-          </span>
+          <div className="hud__head-side">
+            <span className="hud__status" data-status={life.status}>
+              {alive ? (
+                <HeartPulseIcon width={18} height={18} />
+              ) : (
+                <SkullIcon width={18} height={18} />
+              )}
+              {alive ? "Vivo/a" : "Finado/a"}
+            </span>
+
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              data-testid="new-game"
+              disabled={busy}
+              onClick={handleNewGame}
+            >
+              <RotateCcwIcon width={16} height={16} className="btn__icon" />
+              Nueva partida
+            </button>
+          </div>
         </div>
 
         <StatsBar stats={life.stats} flash={flash} />
