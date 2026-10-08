@@ -1,33 +1,40 @@
-"use client";
-
-// Perfil de la vida en curso con su única interacción de avance
-// (T058 · FR-002, FR-004, FR-011, FR-012).
+// HUD de la vida en curso (T058 · FR-002, FR-004, FR-011, FR-012).
 //
 // FR-012: **no existe menú de acciones**. Toda la partida se juega con dos
 // interacciones: pulsar «Avanzar» y elegir una opción del evento. Aquí vive
-// la primera, junto a la edad, la granularidad vigente (que no cambia desde
-// el nacimiento, FR-002) y las cuatro stats (FR-004).
+// la primera, junto a la cabecera (nombre y lugar, edad actual y estado),
+// la granularidad vigente (que no cambia desde el nacimiento, FR-002), las
+// cuatro stats (FR-004) y las personas cercanas.
 //
-// El evento no se dibuja aquí: entra por `children`, que `app/page.tsx`
-// coloca justo encima del botón para que el orden de lectura sea
-// edad → stats → suceso → decisión → avanzar.
+// El suceso pendiente se dibuja con `EventCard` cuando existe; si no lo hay
+// se ofrece el botón «Avanzar». `pending_event` de `GET /lives` garantiza
+// que al recargar no se pierda un suceso a medio decidir (SC-006): ese
+// suceso llega como `event` y bloquea el avance mientras no se decida.
 
+import { EventCard } from "@/components/EventCard";
+import { PeopleList } from "@/components/PeopleList";
 import { StatsBar } from "@/components/StatsBar";
-import type { Life, Stats } from "@/lib/api";
+import type { StatFlash } from "@/components/StatsBar";
+import {
+  CalendarIcon,
+  ChevronsRightIcon,
+  ClockIcon,
+  HeartPulseIcon,
+  MapPinIcon,
+  SkullIcon,
+  UserIcon,
+} from "@/components/icons";
+import type { Life, PersonaCercana, PresentedEvent, Stats } from "@/lib/api";
 
-const STAT_LABEL: Record<keyof Stats, string> = {
-  health: "Salud",
-  happiness: "Felicidad",
-  intelligence: "Inteligencia",
-  looks: "Aspecto",
+const GENDER_LABEL: Record<Life["gender"], string> = {
+  MALE: "Hombre",
+  FEMALE: "Mujer",
 };
 
 const GRANULARITY_LABEL: Record<Life["granularity"], string> = {
   YEAR: "anual",
   MONTH: "mensual",
 };
-
-const errorStyle: React.CSSProperties = { color: "#b91c1c" };
 
 /** `0 años y 3 meses` / `12 años y 5 meses`: edad legible con ambas unidades. */
 function ageLabel(ageMonths: number): string {
@@ -41,71 +48,111 @@ function ageLabel(ageMonths: number): string {
   return parts.join(" y ");
 }
 
-/** `Salud -1 · Felicidad +2`, omitiendo las stats que no se movieron. */
-function derivedLabel(derived: Partial<Stats>): string {
-  return (Object.keys(STAT_LABEL) as (keyof Stats)[])
-    .filter((key) => typeof derived[key] === "number" && derived[key] !== 0)
-    .map((key) => {
-      const value = derived[key] as number;
-      return `${STAT_LABEL[key]} ${value > 0 ? "+" : ""}${value}`;
-    })
-    .join(" · ");
-}
-
 export function LifeView({
   life,
-  derived,
+  countryName,
+  characterName,
+  event = null,
+  periodDeltas = null,
+  flash = null,
   onAdvance,
-  pending = false,
+  onDecide,
   busy = false,
-  children,
+  people,
 }: {
   life: Life;
-  derived?: Partial<Stats> | null;
+  /** Nombre del país traducido (del catálogo de nacimiento), si se conoce. */
+  countryName?: string;
+  /** Nombre local del personaje (no viaja al backend, ver `characterName.ts`). */
+  characterName?: string;
+  /** Suceso pendiente de decisión; llega de `pending_event` al recargar. */
+  event?: PresentedEvent | null;
+  /** Deriva natural del período, para enseñarla junto al suceso. */
+  periodDeltas?: Partial<Stats> | null;
+  /** Delta recién aplicado, para el flash sobre las stats. */
+  flash?: StatFlash | null;
   onAdvance: () => void;
-  /** Hay un evento sin decidir: no se puede avanzar otra vez (el backend responde `409`). */
-  pending?: boolean;
-  /** Hay una petición en vuelo: evita el doble clic sobre «Avanzar». */
+  onDecide: (optionId: string) => void;
+  /** Hay una petición en vuelo: evita el doble clic. */
   busy?: boolean;
-  children?: React.ReactNode;
+  people: PersonaCercana[];
 }) {
   const alive = life.status === "ALIVE";
-  const drift = derived ? derivedLabel(derived) : "";
+  const place = countryName ? `${life.city} (${countryName})` : `${life.city} (${life.country})`;
 
   return (
-    <section aria-live="polite" data-testid="life">
-      <h2>
-        {ageLabel(life.age_months)} · {life.city} ({life.country})
-      </h2>
-      <p data-testid="profile">
-        Nacido/a en {life.birth_year} · {life.current_year} · avance{" "}
-        {GRANULARITY_LABEL[life.granularity]}
-      </p>
+    <div className="stack" aria-live="polite" data-testid="life">
+      {/* --- cabecera del HUD + stats ------------------------------------ */}
+      <section className="panel">
+        <div className="hud__head">
+          <div>
+            <p className="hud__name">
+              <UserIcon width={16} height={16} />
+              {characterName ? characterName : "Personaje"} · {GENDER_LABEL[life.gender]}
+            </p>
+            <h2 className="hud__age" data-testid="age">
+              {ageLabel(life.age_months)}
+            </h2>
+            <p className="hud__meta" data-testid="profile">
+              <span className="hud__meta-item">
+                <MapPinIcon width={16} height={16} />
+                {place}
+              </span>
+              <span className="hud__meta-item">
+                <CalendarIcon width={16} height={16} />
+                {life.birth_year} → {life.current_year}
+              </span>
+              <span className="hud__meta-item">
+                <ClockIcon width={16} height={16} />
+                Avance {GRANULARITY_LABEL[life.granularity]}
+              </span>
+            </p>
+          </div>
 
-      <StatsBar stats={life.stats} />
+          <span className="hud__status" data-status={life.status}>
+            {alive ? (
+              <HeartPulseIcon width={18} height={18} />
+            ) : (
+              <SkullIcon width={18} height={18} />
+            )}
+            {alive ? "Vivo/a" : "Finado/a"}
+          </span>
+        </div>
 
-      {children}
+        <StatsBar stats={life.stats} flash={flash} />
+      </section>
 
-      {drift ? (
-        <p data-testid="derived" style={{ fontSize: "0.9rem" }}>
-          Este período: {drift}
-        </p>
-      ) : null}
-
-      {alive ? (
-        <button
-          type="button"
-          data-testid="advance"
-          disabled={pending || busy}
-          onClick={onAdvance}
-        >
-          Avanzar
-        </button>
+      {/* --- suceso pendiente o botón de avance --------------------------- */}
+      {event ? (
+        <EventCard
+          event={event}
+          periodDeltas={periodDeltas}
+          onSelect={onDecide}
+          busy={busy}
+        />
+      ) : alive ? (
+        <div className="advance-box">
+          <p className="advance-box__hint">
+            Toca «Avanzar» para vivir el siguiente período de tu vida.
+          </p>
+          <button
+            type="button"
+            className="btn btn--primary btn--lg btn--block"
+            data-testid="advance"
+            disabled={busy}
+            onClick={onAdvance}
+          >
+            <ChevronsRightIcon width={22} height={22} className="btn__icon" />
+            {busy ? "Avanzando…" : "Avanzar"}
+          </button>
+        </div>
       ) : (
-        <p role="alert" data-testid="dead" style={errorStyle}>
+        <p className="alert alert--error" role="alert" data-testid="dead">
           Tu historia ha terminado.
         </p>
       )}
-    </section>
+
+      <PeopleList people={people} />
+    </div>
   );
 }

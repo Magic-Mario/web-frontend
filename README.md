@@ -12,21 +12,26 @@ proxy genérico.
 ## Layout
 
 - `app/page.tsx` — la única página. Tres fases: `loading` (se retoma la partida
-  con `GET /lives`), `birth` (`BirthForm`) y `life` (`LifeView`). Al morir
-  muestra `DeathSummary`, y «Empezar de nuevo» borra la partida con
-  `DELETE /lives` y vuelve al formulario (SC-004).
+  con `GET /lives`), `birth` (`BirthForm`) y `life` (`LifeView` + `EventTimeline`
+  lateral). Al morir muestra `DeathSummary` con el resumen **y** el historial
+  completo, y «Empezar de nuevo» borra la partida con `DELETE /lives`, limpia
+  la identidad anónima y vuelve al formulario (SC-004).
 - `app/api/[...path]/route.ts` — **proxy único** hacia el backend (T027):
   reenvía método, cuerpo, query y la cabecera `X-Player-Id` a
   `BACKEND_BASE_URL/<ruta>` (por defecto `http://backend:8000`; en local se
   pasa `BACKEND_BASE_URL=http://localhost:8000`). Así el navegador solo habla
   con el origen de Next: sin CORS y sin exponer la dirección interna del
   servicio, y el backend sigue publicando sus rutas también bajo `/api`.
-- `components/` — `BirthForm`, `LifeView`, `StatsBar`, `PeopleList`,
-  `EventCard`, `DeathSummary`.
+- `components/` — `BirthForm`, `LifeView`, `StatsBar`, `EventCard`,
+  `PeopleList`, `EventTimeline` (historial), `DeathSummary`, más `DeltaChips`
+  (chips de deltas) e `icons.tsx` (SVG inline estilo Lucide, sin emojis).
 - `lib/api.ts` — cliente REST y tipos del contrato (`Life`, `PresentedEvent`,
-  `LifeSummary`, `ApiError`…).
+  `EventHistory`, `LifeSummary`, `ApiError`…), incluida la ruta nueva
+  `GET /lives/events` del histórico de sucesos.
 - `lib/playerId.ts` — UUID v4 anónimo por jugador (FR-008), generado en el
   navegador y enviado como `X-Player-Id`.
+- `lib/characterName.ts` — nombre del personaje, sólo en el navegador (el
+  contrato de creación no lo admite).
 - `contracts.version` — tag del contrato fijado (`contracts/v2.0.0`).
 - `vendor/openapi.yaml` — copia **byte idéntica** de `git show
   contracts/v2.0.0:contracts/openapi.yaml` (FR-006); cambia en el mismo PR que

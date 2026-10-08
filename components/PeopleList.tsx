@@ -1,9 +1,11 @@
 // Personas cercanas con nombre, relación y estado (T030 · FR-014).
 //
 // Los padres existen desde la creación; el resto (hermanos, amigos, pareja)
-// se irá generando conforme avance la vida.
+// se irá generando conforme avance la vida. Cada fila lleva avatar con la
+// inicial, relación traducida y un badge de estado coloreado.
 
 import type { PersonaCercana, PersonState, Relation } from "@/lib/api";
+import { UsersIcon } from "@/components/icons";
 
 const RELATION_LABEL: Record<Relation, string> = {
   FATHER: "Padre",
@@ -22,21 +24,40 @@ const STATE_LABEL: Record<PersonState, string> = {
 
 export function PeopleList({ people }: { people: PersonaCercana[] }) {
   return (
-    <section>
-      <h2>Personas cercanas</h2>
+    <section className="panel" aria-labelledby="people-heading">
+      <div className="panel__head">
+        <span className="panel__icon">
+          <UsersIcon />
+        </span>
+        <div>
+          <h3 id="people-heading" className="panel__title">
+            Personas cercanas
+          </h3>
+          <p className="panel__subtitle">Familia y personas que acompañan tu vida</p>
+        </div>
+      </div>
+
       {people.length === 0 ? (
-        <p>Aún no conozcas a nadie.</p>
+        <p className="empty" style={{ padding: "var(--space-4)" }}>
+          Aún no conozcas a nadie.
+        </p>
       ) : (
-        <ul style={{ listStyle: "none" }}>
+        <ul className="people">
           {people.map((person, index) => (
             <li
               key={`${person.relation}-${person.name}-${index}`}
-              style={{ display: "flex", justifyContent: "space-between", padding: "0.35rem 0" }}
+              className="person"
             >
-              <span>
-                <strong>{person.name}</strong> · {RELATION_LABEL[person.relation]}
+              <span className="person__avatar" aria-hidden="true">
+                {person.name.trim().charAt(0).toUpperCase()}
               </span>
-              <span>{STATE_LABEL[person.state]}</span>
+              <span className="person__body">
+                <span className="person__name">{person.name}</span>
+                <span className="person__relation">{RELATION_LABEL[person.relation]}</span>
+              </span>
+              <span className="person__state" data-state={person.state}>
+                {STATE_LABEL[person.state]}
+              </span>
             </li>
           ))}
         </ul>

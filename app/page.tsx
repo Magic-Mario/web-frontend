@@ -1,26 +1,33 @@
 "use client";
 
-// Portada del juego (T032 + T059): **la interfaz principal pasa a ser el
-// juego** (FR-009, SC-009).
+// Portada del juego (T032 + T059): **la interfaz principal es el juego**
+// (FR-009, SC-009).
 //
 // - Sin vida → formulario de nacimiento (con el catálogo de FR-001).
-// - Con vida → `LifeView` con edad, granularidad vigente, stats y personas,
-//   y `EventCard` cuando toca decidir. Son **las dos únicas interacciones**
-//   de la partida: avanzar y elegir opción, sin menú de acciones (FR-012).
+// - Con vida → `LifeView` con cabecera (nombre, lugar, edad y estado),
+//   stats, el `EventCard` o el botón «Avanzar», personas cercanas y, al
+//   lado, la línea de tiempo del historial (`GET /lives/events`). Son **las
+//   dos únicas interacciones** de la partida: avanzar y elegir opción, sin
+//   menú de acciones (FR-012).
 // - Al recargar se retoma la partida tal cual quedó, incluido un suceso
 //   pendiente de decisión que el backend devuelve en `GET /lives`
 //   (FR-008, SC-006).
 // - Al morir, `GET /lives/summary` levanta la compuerta (409 en vida) y se
-//   pinta `DeathSummary`; «Empezar de nuevo» borra todo con `DELETE /lives`
-//   y vuelve al formulario sin rastro de la partida anterior (SC-004).
+//   pinta `DeathSummary` con el resumen **y** el historial completo; «Empezar
+//   de nuevo» borra todo con `DELETE /lives`, limpia la identidad anónima y
+//   vuelve al formulario sin rastro de la partida anterior (SC-004).
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { BirthForm } from "@/components/BirthForm";
+import type { BirthFormData } from "@/components/BirthForm";
 import { DeathSummary } from "@/components/DeathSummary";
-import { EventCard } from "@/components/EventCard";
+import { EventTimeline } from "@/components/EventTimeline";
+import type { TimelineState } from "@/components/EventTimeline";
 import { LifeView } from "@/components/LifeView";
-import { PeopleList } from "@/components/PeopleList";
+import type { StatFlash } from "@/components/StatsBar";
+import { SparklesIcon, TriangleAlertIcon } from "@/components/icons";
+import { hasDeltas } from "@/components/DeltaChips";
 import {
   ApiError,
   advanceLife,
@@ -28,37 +35,94 @@ import {
   deleteLife,
   getBirthCatalog,
   getLife,
+  getLifeEvents,
   getSummary,
   submitDecision,
 } from "@/lib/api";
 import type {
   BirthCountry,
-  CreateLifeInput,
+  EventHistory,
   Life,
   LifeSummary,
   PresentedEvent,
   Stats,
 } from "@/lib/api";
+import { clearCharacterName, getCharacterName, setCharacterName } from "@/lib/characterName";
+import { clearPlayerId } from "@/lib/playerId";
 
 type Phase = "loading" | "birth" | "life";
+
+/** Cabecera y pie comunes a las tres fases del juego. */
+function Shell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="app">
+      <header className="app__header">
+        <div className="brand">
+          <span className="brand__mark">
+            <SparklesIcon width={24} height={24} />
+          </span>
+          <div>
+            <h1 className="brand__title">Simulador de vida</h1>
+            <p className="brand__tagline">
+              Nace, crece y decide sobre los sucesos de la época
+            </p>
+          </div>
+        </div>
+      </header>
+
+      <main className="app__main stack">{children}</main>
+
+      <footer className="app__footer">
+        Partida anónima: tu identidad y tu nombre se guardan solo en este
+        navegador.
+      </footer>
+    </div>
+  );
+}
 
 export default function Home() {
   const [phase, setPhase] = useState<Phase>("loading");
   const [life, setLife] = useState<Life | null>(null);
   const [event, setEvent] = useState<PresentedEvent | null>(null);
-  const [derived, setDerived] = useState<Partial<Stats> | null>(null);
+  /** Deriva natural del período (`AdvanceResponse.derived`). */
+  const [periodDeltas, setPeriodDeltas] = useState<Partial<Stats> | null>(null);
+  /** Delta recién aplicado, para el flash sobre las stats. */
+  const [flash, setFlash] = useState<StatFlash | null>(null);
   const [summary, setSummary] = useState<LifeSummary | null>(null);
+  const [history, setHistory] = useState<EventHistory | null>(null);
+  const [historyState, setHistoryState] = useState<TimelineState>("loading");
   const [countries, setCountries] = useState<BirthCountry[]>([]);
+  const [characterName, setCharacterNameState] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  /** Contador para reiniciar la animación del flash en cada suceso. */
+  const flashId = useRef(0);
 
   /** Carga la vida y, con ella, el suceso que estuviera sin decidir. */
   const adoptLife = useCallback((next: Life) => {
     setLife(next);
     setEvent(next.pending_event ?? null);
-    setDerived(null);
+    setPeriodDeltas(null);
+    setFlash(null);
     setSummary(null);
     setPhase("life");
+  }, []);
+
+  /**
+   * Recarga el histórico. Si el backend todavía no publica `/lives/events`
+   * (o responde con error), no se rompe nada: el panel se queda vacío.
+   */
+  const refreshHistory = useCallback(async () => {
+    setHistoryState("loading");
+    try {
+      const data = await getLifeEvents();
+      setHistory(data);
+      setHistoryState("ready");
+    } catch {
+      setHistory(null);
+      setHistoryState("error");
+    }
   }, []);
 
   useEffect(() => {
@@ -67,7 +131,10 @@ export default function Home() {
     (async () => {
       try {
         const existing = await getLife();
-        if (!cancelled) adoptLife(existing);
+        if (cancelled) return;
+        adoptLife(existing);
+        setCharacterNameState(getCharacterName());
+        void refreshHistory();
       } catch (err) {
         if (cancelled) return;
         // 404 = todavía no hay partida: se ofrece el formulario de nacimiento.
@@ -89,7 +156,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [adoptLife]);
+  }, [adoptLife, refreshHistory]);
 
   // El resumen sólo existe con la vida terminada: `GET /lives/summary`
   // responde `409` mientras corre (FR-005), así que se pide aquí, tanto al
@@ -116,17 +183,38 @@ export default function Home() {
     };
   }, [life, summary]);
 
+  // El flash de deltas es breve: se apaga solo a los pocos segundos.
+  useEffect(() => {
+    if (!flash) return;
+    const timer = window.setTimeout(() => setFlash(null), 2600);
+    return () => window.clearTimeout(timer);
+  }, [flash]);
+
+  const pushFlash = useCallback((deltas: Partial<Stats> | null) => {
+    if (!deltas || !hasDeltas(deltas)) return;
+    flashId.current += 1;
+    setFlash({ deltas, id: flashId.current });
+  }, []);
+
   const handleCreate = useCallback(
-    async (input: CreateLifeInput) => {
+    async (input: BirthFormData) => {
       setBusy(true);
       setError(null);
+      const { name, ...payload } = input;
       try {
-        adoptLife(await createLife(input));
+        const created = await createLife(payload);
+        // El nombre no viaja al servidor: se queda en el navegador.
+        setCharacterName(name);
+        setCharacterNameState(name);
+        adoptLife(created);
+        void refreshHistory();
       } catch (err) {
         if (err instanceof ApiError && err.status === 409) {
           // Una partida por jugador en v1 (FR-008): la retomamos.
           try {
             adoptLife(await getLife());
+            setCharacterNameState(getCharacterName());
+            void refreshHistory();
             return;
           } catch {
             // cae al mensaje de abajo
@@ -137,7 +225,7 @@ export default function Home() {
         setBusy(false);
       }
     },
-    [adoptLife],
+    [adoptLife, refreshHistory],
   );
 
   const handleAdvance = useCallback(async () => {
@@ -147,30 +235,38 @@ export default function Home() {
       const outcome = await advanceLife();
       setLife(outcome.life);
       setEvent(outcome.event);
-      setDerived(outcome.derived ?? null);
+      const derived = outcome.derived ?? null;
+      setPeriodDeltas(derived);
+      pushFlash(derived);
     } catch (err) {
       setError(err instanceof ApiError ? err.detail : "No se pudo avanzar.");
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [pushFlash]);
 
-  const handleDecide = useCallback(async (optionId: string) => {
-    setBusy(true);
-    setError(null);
-    try {
-      const outcome = await submitDecision(optionId);
-      setLife(outcome.life);
-      setEvent(null);
-      setDerived(null);
-    } catch (err) {
-      setError(
-        err instanceof ApiError ? err.detail : "No se pudo registrar la decisión.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+  const handleDecide = useCallback(
+    async (optionId: string) => {
+      setBusy(true);
+      setError(null);
+      try {
+        const outcome = await submitDecision(optionId);
+        setLife(outcome.life);
+        setEvent(null);
+        setPeriodDeltas(null);
+        pushFlash(outcome.deltas);
+        // La decisión ya está en el servidor: se refresca el historial.
+        void refreshHistory();
+      } catch (err) {
+        setError(
+          err instanceof ApiError ? err.detail : "No se pudo registrar la decisión.",
+        );
+      } finally {
+        setBusy(false);
+      }
+    },
+    [pushFlash, refreshHistory],
+  );
 
   const handleRestart = useCallback(async () => {
     setBusy(true);
@@ -178,10 +274,16 @@ export default function Home() {
     try {
       await deleteLife();
       // SC-004: sin rastro de la partida anterior; se vuelve al formulario.
+      clearPlayerId();
+      clearCharacterName();
+      setCharacterNameState("");
       setLife(null);
       setSummary(null);
       setEvent(null);
-      setDerived(null);
+      setPeriodDeltas(null);
+      setFlash(null);
+      setHistory(null);
+      setHistoryState("loading");
       setPhase("birth");
     } catch (err) {
       setError(err instanceof ApiError ? err.detail : "No se pudo borrar la vida.");
@@ -192,56 +294,90 @@ export default function Home() {
 
   if (phase === "loading") {
     return (
-      <main style={main}>
-        <h1>Simulador de vida</h1>
-        <p>Cargando…</p>
-      </main>
+      <Shell>
+        <div className="loading-screen" role="status">
+          <span className="loader" aria-hidden="true" />
+          <p>Cargando tu partida…</p>
+        </div>
+      </Shell>
     );
   }
 
   if (phase === "birth") {
     return (
-      <main style={main}>
-        <h1>Simulador de vida</h1>
-        <BirthForm countries={countries} onSubmit={handleCreate} error={error} busy={busy} />
-      </main>
+      <Shell>
+        <BirthForm
+          countries={countries}
+          onSubmit={handleCreate}
+          error={error}
+          busy={busy}
+        />
+      </Shell>
     );
   }
 
   if (!life) return null;
 
-  return (
-    <main style={main}>
-      <h1>Simulador de vida</h1>
-      <LifeView
-        life={life}
-        derived={derived}
-        pending={event !== null}
-        busy={busy}
-        onAdvance={handleAdvance}
-      >
-        {event ? <EventCard event={event} onSelect={handleDecide} busy={busy} /> : null}
-      </LifeView>
-      <PeopleList people={life.people} />
-      {life.status === "DEAD" ? (
-        summary ? (
-          <DeathSummary summary={summary} onRestart={handleRestart} busy={busy} />
+  const alert = error ? (
+    <p className="alert alert--error" role="alert">
+      <TriangleAlertIcon width={16} height={16} className="alert__icon" />
+      {error}
+    </p>
+  ) : null;
+
+  // --- fin de la vida: resumen + historial completo --------------------
+  if (life.status === "DEAD") {
+    return (
+      <Shell>
+        {alert}
+        {summary ? (
+          <DeathSummary
+            summary={summary}
+            history={history}
+            historyState={historyState}
+            onRestart={handleRestart}
+            onRetryHistory={refreshHistory}
+            busy={busy}
+          />
         ) : (
-          <p>Cargando el resumen…</p>
-        )
-      ) : null}
-      {error ? (
-        <p role="alert" style={{ color: "#b91c1c" }}>
-          {error}
-        </p>
-      ) : null}
-    </main>
+          <div className="loading-screen" role="status">
+            <span className="loader" aria-hidden="true" />
+            <p>Cargando el resumen de tu vida…</p>
+          </div>
+        )}
+      </Shell>
+    );
+  }
+
+  // --- vida en curso: HUD + historial lateral --------------------------
+  const countryName = countries.find((entry) => entry.code === life.country)?.name;
+
+  return (
+    <Shell>
+      {alert}
+      <div className="game-layout">
+        <div className="game-layout__main">
+          <LifeView
+            life={life}
+            countryName={countryName}
+            characterName={characterName}
+            event={event}
+            periodDeltas={periodDeltas}
+            flash={flash}
+            busy={busy}
+            people={life.people}
+            onAdvance={handleAdvance}
+            onDecide={handleDecide}
+          />
+        </div>
+        <aside className="game-layout__side">
+          <EventTimeline
+            history={history}
+            state={historyState}
+            onRetry={refreshHistory}
+          />
+        </aside>
+      </div>
+    </Shell>
   );
 }
-
-const main: React.CSSProperties = {
-  fontFamily: "system-ui, sans-serif",
-  padding: "2rem",
-  maxWidth: 640,
-  margin: "0 auto",
-};

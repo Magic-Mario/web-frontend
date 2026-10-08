@@ -116,6 +116,34 @@ export interface LifeSummary {
   };
 }
 
+/**
+ * Una entrada del histórico de sucesos ya vividos (`GET /lives/events`).
+ * `option_label` trae la etiqueta de la opción elegida y `deltas` el cambio
+ * que aplicó sobre las stats (SC-003).
+ */
+export interface EventHistoryItem {
+  /** Nº de evento: el orden cronológico del histórico es `seq` ascendente. */
+  seq: number;
+  period_index: number;
+  age_months: number;
+  age_years: number;
+  event_id: string;
+  type: EventType;
+  text: string;
+  option_id: string;
+  option_label: string;
+  deltas: Partial<Stats>;
+  fatal: boolean;
+  source: EventSource;
+}
+
+/** Histórico cronológico de sucesos de la vida en curso. */
+export interface EventHistory {
+  player_id: string;
+  count: number;
+  events: EventHistoryItem[];
+}
+
 export interface BirthCountry {
   code: string;
   name: string;
@@ -216,4 +244,15 @@ export function getSummary(): Promise<LifeSummary> {
 /** Catálogo acotado de países y ciudades (FR-001). */
 export function getBirthCatalog(): Promise<BirthCatalog> {
   return request<BirthCatalog>("/catalog/birth");
+}
+
+/**
+ * Histórico cronológico de los sucesos ya vividos (historial del juego).
+ *
+ * `404` si todavía no hay partida; si el backend aún no publica la ruta, el
+ * caller captura el error y pinta el panel vacío sin romper el resto del
+ * juego (la partida sigue jugándose con las demás operaciones).
+ */
+export function getLifeEvents(): Promise<EventHistory> {
+  return request<EventHistory>("/lives/events");
 }
