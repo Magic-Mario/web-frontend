@@ -20,6 +20,7 @@ const STATE_LABEL: Record<PersonState, string> = {
   DEAD: "Fallecido/a",
   TOGETHER: "Juntos",
   SEPARATED: "Separados",
+  ESTRANGED: "Distanciados",
 };
 
 export function PeopleList({ people }: { people: PersonaCercana[] }) {

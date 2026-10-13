@@ -19,13 +19,14 @@ export type Granularity = "YEAR" | "MONTH";
 export type LifeStatus = "ALIVE" | "DEAD";
 export type CauseOfDeath = "HEALTH_ZERO" | "FATAL_OPTION" | "FATAL_RANDOM";
 export type Relation = "FATHER" | "MOTHER" | "SIBLING" | "FRIEND" | "PARTNER";
-export type PersonState = "ALIVE" | "DEAD" | "TOGETHER" | "SEPARATED";
-export type EventType =
-  | "COTIDIANO"
-  | "EDUCATIVO"
-  | "LABORAL"
-  | "RELACION"
-  | "SENTIMENTAL";
+export type PersonState =
+  | "ALIVE"
+  | "DEAD"
+  | "TOGETHER"
+  | "SEPARATED"
+  | "ESTRANGED";
+/** FR-003: los tres tipos del rediseño (sentimental se funde en RELATIONSHIPS). */
+export type EventType = "MAIN" | "DAILY" | "RELATIONSHIPS";
 export type EventSource = "WIKIPEDIA" | "SEED";
 
 // --- schemas del contrato --------------------------------------------------
@@ -41,6 +42,8 @@ export interface PersonaCercana {
   name: string;
   relation: Relation;
   state: PersonState;
+  /** FR-018: gauge oculta 0–100 de calidad de la relación (no editable). */
+  relationship?: number;
 }
 
 export interface Life {
@@ -84,12 +87,19 @@ export interface PresentedEvent {
   text: string;
   year?: number;
   source?: EventSource;
+  /** FR-002: país del suceso. */
+  country?: string;
   options: EventOption[];
 }
 
 export interface AdvanceResponse {
   life: Life;
-  event: PresentedEvent;
+  /** Edad en años cumplidos al abrir el período. */
+  age_years: number;
+  /** FR-007: el lote del período, de 1 a 3 sucesos, resueltos en orden. */
+  events: PresentedEvent[];
+  /** `false` justo tras avanzar: el avance **abre** el período. */
+  period_complete: boolean;
   derived?: Partial<Stats>;
 }
 
@@ -98,6 +108,8 @@ export interface DecisionResponse {
   deltas: Partial<Stats>;
   dead: boolean;
   cause_of_death?: CauseOfDeath | null;
+  /** `true` cuando esta decisión resolvió el último suceso del período. */
+  period_complete: boolean;
 }
 
 export interface SystemDigest {
@@ -223,16 +235,25 @@ export function deleteLife(): Promise<void> {
   return request<void>("/lives", { method: "DELETE" });
 }
 
-/** Avanza un período y presenta su evento (FR-002, FR-003). */
+/** Abre el período y devuelve su lote de sucesos (FR-002, FR-007). */
 export function advanceLife(): Promise<AdvanceResponse> {
   return request<AdvanceResponse>("/lives/advance", { method: "POST" });
 }
 
-/** Registra la opción elegida y aplica sus deltas (FR-003, FR-004). */
-export function submitDecision(optionId: string): Promise<DecisionResponse> {
+/**
+ * Resuelve **un** suceso del lote (FR-007).
+ *
+ * El contrato exige mandar el `event_id` del suceso pendiente además de la
+ * opción: así el servidor puede rechazar una decisión que llegue tarde o fuera
+ * de orden en vez de aplicarla sobre el suceso equivocado.
+ */
+export function submitDecision(
+  eventId: string,
+  optionId: string,
+): Promise<DecisionResponse> {
   return request<DecisionResponse>("/lives/decision", {
     method: "POST",
-    body: JSON.stringify({ option_id: optionId }),
+    body: JSON.stringify({ event_id: eventId, option_id: optionId }),
   });
 }
 

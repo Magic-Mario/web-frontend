@@ -235,7 +235,9 @@ export default function Home() {
     try {
       const outcome = await advanceLife();
       setLife(outcome.life);
-      setEvent(outcome.event);
+      // FR-007: el avance abre el lote del período; se presenta el primero y
+      // los siguientes van llegando con cada decisión.
+      setEvent(outcome.events[0]);
       const derived = outcome.derived ?? null;
       setPeriodDeltas(derived);
       pushFlash(derived);
@@ -248,12 +250,15 @@ export default function Home() {
 
   const handleDecide = useCallback(
     async (optionId: string) => {
+      if (!event) return;
       setBusy(true);
       setError(null);
       try {
-        const outcome = await submitDecision(optionId);
+        const outcome = await submitDecision(event.id, optionId);
         setLife(outcome.life);
-        setEvent(null);
+        // FR-007: si quedaban sucesos en el lote, el siguiente ya viene en la
+        // respuesta; si no, el período está resuelto y reaparece «Avanzar».
+        setEvent(outcome.life.pending_event ?? null);
         setPeriodDeltas(null);
         pushFlash(outcome.deltas);
         // La decisión ya está en el servidor: se refresca el historial.
@@ -266,7 +271,7 @@ export default function Home() {
         setBusy(false);
       }
     },
-    [pushFlash, refreshHistory],
+    [event, pushFlash, refreshHistory],
   );
 
   const handleRestart = useCallback(async () => {

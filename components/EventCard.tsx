@@ -12,29 +12,23 @@
 
 import type { EventSource, EventType, PresentedEvent, Stats } from "@/lib/api";
 import {
-  BookOpenIcon,
-  BriefcaseIcon,
   HeartIcon,
   HomeIcon,
+  SparklesIcon,
   TriangleAlertIcon,
-  UsersIcon,
 } from "@/components/icons";
 import { DeltaChips, hasDeltas } from "@/components/DeltaChips";
 
 const TYPE_LABEL: Record<EventType, string> = {
-  COTIDIANO: "Cotidiano",
-  EDUCATIVO: "Educativo",
-  LABORAL: "Laboral",
-  RELACION: "Relaciones",
-  SENTIMENTAL: "Sentimental",
+  MAIN: "Del año",
+  DAILY: "Día a día",
+  RELATIONSHIPS: "Relaciones",
 };
 
 const TYPE_ICON: Record<EventType, React.ReactNode> = {
-  COTIDIANO: <HomeIcon />,
-  EDUCATIVO: <BookOpenIcon />,
-  LABORAL: <BriefcaseIcon />,
-  RELACION: <UsersIcon />,
-  SENTIMENTAL: <HeartIcon />,
+  MAIN: <SparklesIcon />,
+  DAILY: <HomeIcon />,
+  RELATIONSHIPS: <HeartIcon />,
 };
 
 const SOURCE_LABEL: Record<EventSource, string> = {

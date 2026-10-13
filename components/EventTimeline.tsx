@@ -23,11 +23,9 @@ import { DeltaChips, hasDeltas } from "@/components/DeltaChips";
 export type TimelineState = "loading" | "ready" | "error";
 
 const TYPE_LABEL: Record<EventType, string> = {
-  COTIDIANO: "Cotidiano",
-  EDUCATIVO: "Educativo",
-  LABORAL: "Laboral",
-  RELACION: "Relaciones",
-  SENTIMENTAL: "Sentimental",
+  MAIN: "Del año",
+  DAILY: "Día a día",
+  RELATIONSHIPS: "Relaciones",
 };
 
 /** `12 años` / `8 meses`: la edad cumplida al resolver ese período. */
